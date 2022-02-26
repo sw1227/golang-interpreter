@@ -65,6 +65,23 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return evalIfExpression(node, env)
 	case *ast.Identifier:
 		return evalIdentifier(node, env)
+	case *ast.FunctionLiteral:
+		params := node.Parameters
+		body := node.Body
+		return &object.Function{Parameters: params, Env: env, Body: body}
+	case *ast.CallExpression:
+		// node.FunctionはIdentifier, FunctionLiteralの両方があり得るが、Evalすればいずれにせよobject.Functionが得られる
+		function := Eval(node.Function, env)
+		if isError(function) {
+			return function
+		}
+		// 関数呼び出し時の引数はあらかじめ各々評価する
+		args := evalExpressions(node.Arguments, env)
+		if len(args) == 1 && isError(args[0]) {
+			return args[0]
+		}
+
+		return applyFunction(function, args)
 	}
 
 	return nil
@@ -104,6 +121,21 @@ func evalBlockStatement(block *ast.BlockStatement, env *object.Environment) obje
 				return result
 			}
 		}
+	}
+
+	return result
+}
+
+// 複数の式を評価。エラーを見つけたら時点でそのエラーのみを含むスライスを返す
+func evalExpressions(exps []ast.Expression, env *object.Environment) []object.Object {
+	var result []object.Object
+
+	for _, e := range exps {
+		evaluated := Eval(e, env)
+		if isError(evaluated) {
+			return []object.Object{evaluated}
+		}
+		result = append(result, evaluated)
 	}
 
 	return result
@@ -228,6 +260,38 @@ func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object
 	}
 
 	return val
+}
+
+func applyFunction(fn object.Object, args []object.Object) object.Object {
+	function, ok := fn.(*object.Function)
+	if !ok {
+		return newError("not a function: %s", fn.Type())
+	}
+
+	// 関数"定義時"にFunctionLiteralのevalによってFunctionオブジェクトに保持されたenvを拡張する（呼び出し時のenvではなく）
+	// そのenvでは評価された引数を束縛し、それを用いてBodyを評価
+	extendedEnv := extendFunctionEnv(function, args)
+	evaluated := Eval(function.Body, extendedEnv)
+	// 関数内のreturnでは関数外の文の評価を止めないので、unwrapする
+	return unwrapReturnValue(evaluated)
+}
+
+func extendFunctionEnv(fn *object.Function, args []object.Object) *object.Environment {
+	env := object.NewEnclosedEnvironment(fn.Env)
+
+	for paramIdx, param := range fn.Parameters {
+		env.Set(param.Value, args[paramIdx])
+	}
+
+	return env
+}
+
+func unwrapReturnValue(obj object.Object) object.Object {
+	if returnValue, ok := obj.(*object.ReturnValue); ok {
+		return returnValue.Value
+	}
+
+	return obj
 }
 
 func newError(format string, a ...interface{}) *object.Error {
