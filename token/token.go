@@ -14,8 +14,9 @@ const (
 	EOF     = "EOF"     // ファイル終端: 構文解析器に停止して良いと伝える
 
 	// 識別子 + リテラル
-	IDENT = "IDENT" // add, foobar, x, y, ...
-	INT   = "INT"   // 123456
+	IDENT  = "IDENT"  // add, foobar, x, y, ...
+	INT    = "INT"    // 123456
+	STRING = "STRING" // 文字列全体を単一のトークンにする
 
 	// 演算子
 	ASSIGN   = "="
