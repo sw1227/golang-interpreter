@@ -20,6 +20,7 @@ const (
 	RETURN_VALUE_OBJ = "RETURN_VALUE"
 	ERROR_OBJ        = "ERROR"
 	FUNCTION_OBJ     = "FUNCTION"
+	BUILTIN_OBJ      = "BUILTIN"
 )
 
 // 値の種類ごとに異なる内部表現を持たせるため、Objectはinterfaceにしておいて個別にstructを定義
@@ -95,3 +96,14 @@ func (f *Function) Inspect() string {
 
 	return out.String()
 }
+
+// 組み込み関数の、Goにおける関数の型定義
+type BuiltinFunction func(args ...Object) Object
+
+// 組み込み関数BuiltinFunctionをオブジェクトシステムと整合するようwrap
+type Builtin struct {
+	Fn BuiltinFunction
+}
+
+func (b *Builtin) Type() ObjectType { return BUILTIN_OBJ }
+func (b *Builtin) Inspect() string  { return "builtin function" }

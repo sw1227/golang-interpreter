@@ -268,26 +268,33 @@ func isTruthy(obj object.Object) bool {
 }
 
 func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object {
-	val, ok := env.Get(node.Value)
-	if !ok {
-		return newError("identifier not found: " + node.Value)
+	if val, ok := env.Get(node.Value); ok {
+		return val
 	}
 
-	return val
+	// 現在の環境で束縛がなければ組み込み関数を探す
+	if builtin, ok := builtins[node.Value]; ok {
+		return builtin
+	}
+
+	return newError("identifier not found: " + node.Value)
 }
 
 func applyFunction(fn object.Object, args []object.Object) object.Object {
-	function, ok := fn.(*object.Function)
-	if !ok {
+	switch fn := fn.(type) {
+	case *object.Function:
+		// 関数"定義時"にFunctionLiteralのevalによってFunctionオブジェクトに保持されたenvを拡張する（呼び出し時のenvではなく）
+		// そのenvでは評価された引数を束縛し、それを用いてBodyを評価
+		extendedEnv := extendFunctionEnv(fn, args)
+		evaluated := Eval(fn.Body, extendedEnv)
+		// 関数内のreturnでは関数外の文の評価を止めないので、unwrapする
+		return unwrapReturnValue(evaluated)
+	case *object.Builtin:
+		// 組み込み関数は*object.ReturnValueを返さないのでunwrap不要
+		return fn.Fn(args...)
+	default:
 		return newError("not a function: %s", fn.Type())
 	}
-
-	// 関数"定義時"にFunctionLiteralのevalによってFunctionオブジェクトに保持されたenvを拡張する（呼び出し時のenvではなく）
-	// そのenvでは評価された引数を束縛し、それを用いてBodyを評価
-	extendedEnv := extendFunctionEnv(function, args)
-	evaluated := Eval(function.Body, extendedEnv)
-	// 関数内のreturnでは関数外の文の評価を止めないので、unwrapする
-	return unwrapReturnValue(evaluated)
 }
 
 func extendFunctionEnv(fn *object.Function, args []object.Object) *object.Environment {
